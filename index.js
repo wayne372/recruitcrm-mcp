@@ -7,6 +7,7 @@ const API_TOKEN = process.env.RECRUITCRM_API_TOKEN;
 const BASE_URL = "https://api.recruitcrm.io/v1";
 
 async function rcrmFetch(path, options = {}) {
+  console.log(`[RCRM] Calling: ${BASE_URL}${path}`);
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -19,7 +20,9 @@ async function rcrmFetch(path, options = {}) {
     const text = await res.text();
     throw new Error(`RecruitCRM error ${res.status}: ${text}`);
   }
-  return res.json();
+  const json = await res.json();
+  console.log(`[RCRM] Response:`, JSON.stringify(json).slice(0, 500));
+  return json;
 }
 
 function createServer() {
