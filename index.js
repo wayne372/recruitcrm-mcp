@@ -785,3 +785,49 @@ app.get("/health", (_, res) => res.json({
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`RecruitCRM MCP v2.0 running on port ${PORT}`));
+
+// ================================================================
+// DIAGNOSTIC ENDPOINT - visit /test in browser to check API
+// ================================================================
+app.get("/test", async (req, res) => {
+  const results = {};
+
+  const tests = [
+    // Candidate search variants
+    ["candidates: first_name=Jamie", "/candidates/search?first_name=Jamie"],
+    ["candidates: last_name=Stalker", "/candidates/search?last_name=Stalker"],
+    ["candidates: list all", "/candidates?page=1"],
+    // Contact search variants
+    ["contacts: list all", "/contacts?page=1"],
+    ["contacts: company_name=Oak", "/contacts/search?company_name=Oak"],
+    ["contacts: company=Oak", "/contacts/search?company=Oak"],
+    ["contacts: name=Will", "/contacts/search?name=Will"],
+    ["contacts: first_name=Will", "/contacts/search?first_name=Will"],
+    // Jobs
+    ["jobs: list all", "/jobs?page=1"],
+    ["jobs: status=1 open", "/jobs/search?job_status=1"],
+    ["jobs: list search", "/jobs/search?page=1"],
+  ];
+
+  for (const [label, path] of tests) {
+    try {
+      const r = await fetch(`${BASE_URL}${path}`, {
+        headers: {
+          "Authorization": `Bearer ${API_TOKEN}`,
+          "Accept": "application/json",
+        }
+      });
+      const text = await r.text();
+      try {
+        const json = JSON.parse(text);
+        const count = json.data ? json.data.length : (Array.isArray(json) ? json.length : "?");
+        results[label] = { status: r.status, count, sample: json.data?.[0]?.first_name || json.data?.[0]?.name || "" };
+      } catch {
+        results[label] = { status: r.status, raw: text.slice(0, 100) };
+      }
+    } catch (e) {
+      results[label] = { error: String(e) };
+    }
+  }
+  res.json(results);
+});
