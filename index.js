@@ -30,10 +30,9 @@ function createServer() {
   // ================================================================
 
   server.tool("search_candidates",
-    "Search candidates by name, email, city, skill or current employer. At least one filter required.",
+    "Search candidates by name, email, city, skill or current employer. Pass full name as 'name' e.g. 'Jamie Stalker'. At least one filter required.",
     {
-      first_name: z.string().optional().describe("Candidate first name"),
-      last_name: z.string().optional().describe("Candidate last name"),
+      name: z.string().optional().describe("Full or partial candidate name e.g. 'Jamie Stalker' or just 'Jamie'"),
       email: z.string().optional().describe("Email address"),
       city: z.string().optional().describe("City or location"),
       skill: z.string().optional().describe("Skill keyword"),
@@ -41,8 +40,13 @@ function createServer() {
       current_title: z.string().optional().describe("Current job title"),
       page: z.number().optional().describe("Page number, default 1"),
     },
-    async ({ page = 1, ...filters }) => {
+    async ({ page = 1, name, ...filters }) => {
       const params = new URLSearchParams({ page: String(page) });
+      if (name) {
+        const parts = name.trim().split(/\s+/);
+        params.set("first_name", parts[0]);
+        if (parts.length > 1) params.set("last_name", parts.slice(1).join(" "));
+      }
       Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
       const data = await rcrmFetch(`/candidates/search?${params}`);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
