@@ -17,6 +17,7 @@ async function rcrmFetch(path, options = {}) {
   });
   if (!res.ok) {
     const text = await res.text();
+    console.error(`[RCRM ERROR] ${options.method || 'GET'} ${path} -> ${res.status}: ${text.slice(0, 200)}`);
     throw new Error(`RecruitCRM error ${res.status}: ${text}`);
   }
   return res.json();
