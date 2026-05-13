@@ -30,7 +30,7 @@ function createServer() {
   // ================================================================
 
   server.tool("search_candidates",
-    "Search candidates by name, email, city, skill or current employer. Pass full name as 'name' e.g. 'Jamie Stalker'. At least one filter required.",
+    "Search or list candidates. Pass name to find a specific person e.g. 'Jamie Stalker'. Leave all empty to list all candidates.",
     {
       name: z.string().optional().describe("Full or partial candidate name e.g. 'Jamie Stalker' or just 'Jamie'"),
       email: z.string().optional().describe("Email address"),
@@ -41,15 +41,21 @@ function createServer() {
       page: z.number().optional().describe("Page number, default 1"),
     },
     async ({ page = 1, name, ...filters }) => {
-      const params = new URLSearchParams({ page: String(page) });
-      if (name) {
-        const parts = name.trim().split(/\s+/);
-        params.set("first_name", parts[0]);
-        if (parts.length > 1) params.set("last_name", parts.slice(1).join(" "));
+      const hasFilters = name || Object.values(filters).some(v => v);
+      if (hasFilters) {
+        const params = new URLSearchParams({ page: String(page) });
+        if (name) {
+          const parts = name.trim().split(/\s+/);
+          params.set("first_name", parts[0]);
+          if (parts.length > 1) params.set("last_name", parts.slice(1).join(" "));
+        }
+        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+        const data = await rcrmFetch(`/candidates/search?${params}`);
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      } else {
+        const data = await rcrmFetch(`/candidates?page=${page}`);
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
       }
-      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
-      const data = await rcrmFetch(`/candidates/search?${params}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
 
@@ -209,20 +215,30 @@ function createServer() {
   // ================================================================
 
   server.tool("search_contacts",
-    "Search contacts by name, email, company or location. At least one filter required.",
+    "Search or list contacts. Use company_name to find contacts at a specific company e.g. 'Oak Engage'. Leave empty to list all contacts.",
     {
-      first_name: z.string().optional().describe("Contact first name"),
-      last_name: z.string().optional().describe("Contact last name"),
+      name: z.string().optional().describe("Contact full or partial name e.g. 'Will Murray'"),
       email: z.string().optional().describe("Email address"),
-      company_name: z.string().optional().describe("Company name"),
+      company_name: z.string().optional().describe("Company name e.g. 'Oak Engage'"),
       city: z.string().optional().describe("City or location"),
       page: z.number().optional().describe("Page number, default 1"),
     },
-    async ({ page = 1, ...filters }) => {
-      const params = new URLSearchParams({ page: String(page) });
-      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
-      const data = await rcrmFetch(`/contacts/search?${params}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    async ({ page = 1, name, ...filters }) => {
+      const hasFilters = name || Object.values(filters).some(v => v);
+      if (hasFilters) {
+        const params = new URLSearchParams({ page: String(page) });
+        if (name) {
+          const parts = name.trim().split(/\s+/);
+          params.set("first_name", parts[0]);
+          if (parts.length > 1) params.set("last_name", parts.slice(1).join(" "));
+        }
+        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+        const data = await rcrmFetch(`/contacts/search?${params}`);
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      } else {
+        const data = await rcrmFetch(`/contacts?page=${page}`);
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      }
     }
   );
 
@@ -353,18 +369,24 @@ function createServer() {
   // ================================================================
 
   server.tool("search_jobs",
-    "Search jobs by title, location or status. At least one filter required.",
+    "Search or list jobs. Use job_status 1 for open jobs, 2 for closed, 3 for on hold. Leave all empty to list all jobs.",
     {
-      name: z.string().optional().describe("Job title"),
+      name: z.string().optional().describe("Job title keyword"),
       city: z.string().optional().describe("City or location"),
-      job_status: z.number().optional().describe("Status: 1=Open, 2=Closed, 3=On Hold"),
+      job_status: z.number().optional().describe("1=Open, 2=Closed, 3=On Hold"),
       page: z.number().optional().describe("Page number, default 1"),
     },
     async ({ page = 1, ...filters }) => {
-      const params = new URLSearchParams({ page: String(page) });
-      Object.entries(filters).forEach(([k, v]) => { if (v !== undefined) params.set(k, String(v)); });
-      const data = await rcrmFetch(`/jobs/search?${params}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      const hasFilters = Object.values(filters).some(v => v !== undefined && v !== null && v !== '');
+      if (hasFilters) {
+        const params = new URLSearchParams({ page: String(page) });
+        Object.entries(filters).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') params.set(k, String(v)); });
+        const data = await rcrmFetch(`/jobs/search?${params}`);
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      } else {
+        const data = await rcrmFetch(`/jobs?page=${page}`);
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      }
     }
   );
 
