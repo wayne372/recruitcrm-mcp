@@ -7,7 +7,6 @@ const API_TOKEN = process.env.RECRUITCRM_API_TOKEN;
 const BASE_URL = "https://api.recruitcrm.io/v1";
 
 async function rcrmFetch(path, options = {}) {
-  console.log(`[RCRM] Calling: ${BASE_URL}${path}`);
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -20,9 +19,7 @@ async function rcrmFetch(path, options = {}) {
     const text = await res.text();
     throw new Error(`RecruitCRM error ${res.status}: ${text}`);
   }
-  const json = await res.json();
-  console.log(`[RCRM] Response:`, JSON.stringify(json).slice(0, 500));
-  return json;
+  return res.json();
 }
 
 function createServer() {
@@ -35,7 +32,8 @@ function createServer() {
   server.tool("search_candidates",
     "Search candidates by name, email, city, skill or current employer. At least one filter required.",
     {
-      name: z.string().optional().describe("Candidate full or partial name"),
+      first_name: z.string().optional().describe("Candidate first name"),
+      last_name: z.string().optional().describe("Candidate last name"),
       email: z.string().optional().describe("Email address"),
       city: z.string().optional().describe("City or location"),
       skill: z.string().optional().describe("Skill keyword"),
@@ -209,7 +207,8 @@ function createServer() {
   server.tool("search_contacts",
     "Search contacts by name, email, company or location. At least one filter required.",
     {
-      name: z.string().optional().describe("Contact name"),
+      first_name: z.string().optional().describe("Contact first name"),
+      last_name: z.string().optional().describe("Contact last name"),
       email: z.string().optional().describe("Email address"),
       company_name: z.string().optional().describe("Company name"),
       city: z.string().optional().describe("City or location"),
@@ -782,30 +781,3 @@ app.get("/health", (_, res) => res.json({
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`RecruitCRM MCP v2.0 running on port ${PORT}`));
-
-// Test endpoint - visit /test-search in browser to debug API directly
-app.get("/test-search", async (req, res) => {
-  const results = {};
-  const testParams = [
-    "name=Jamie",
-    "first_name=Jamie",
-    "keyword=Jamie",
-    "q=Jamie",
-    "search=Jamie",
-  ];
-  for (const p of testParams) {
-    try {
-      const r = await fetch(`${BASE_URL}/candidates/search?${p}&page=1`, {
-        headers: {
-          "Authorization": `Bearer ${API_TOKEN}`,
-          "Accept": "application/json",
-        }
-      });
-      const json = await r.json();
-      results[p] = { status: r.status, count: Array.isArray(json.data) ? json.data.length : json };
-    } catch (e) {
-      results[p] = { error: String(e) };
-    }
-  }
-  res.json(results);
-});
