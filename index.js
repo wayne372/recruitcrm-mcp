@@ -813,39 +813,42 @@ app.listen(PORT, () => console.log(`RecruitCRM MCP v2.0 running on port ${PORT}`
 // ================================================================
 app.get("/test", async (req, res) => {
   const results = {};
+  const JAMIE = "17636480569940073000Aej";
 
   const tests = [
-    // Candidate search variants
-    ["candidates: first_name=Jamie", "/candidates/search?first_name=Jamie"],
-    ["candidates: last_name=Stalker", "/candidates/search?last_name=Stalker"],
-    ["candidates: list all", "/candidates?page=1"],
-    // Contact search variants
-    ["contacts: list all", "/contacts?page=1"],
-    ["contacts: company_name=Oak", "/contacts/search?company_name=Oak"],
-    ["contacts: company=Oak", "/contacts/search?company=Oak"],
-    ["contacts: name=Will", "/contacts/search?name=Will"],
-    ["contacts: first_name=Will", "/contacts/search?first_name=Will"],
-    // Jobs
-    ["jobs: list all", "/jobs?page=1"],
-    ["jobs: status=1 open", "/jobs/search?job_status=1"],
-    ["jobs: list search", "/jobs/search?page=1"],
+    // Notes
+    ["notes: list all", "/notes?page=1"],
+    ["notes: search by candidate_slug", "/notes/search?candidate_slug=" + JAMIE],
+    ["notes: search by slug param", "/notes/search?slug=" + JAMIE],
+    ["notes: get candidate notes", "/candidates/" + JAMIE + "/notes"],
+    // Call logs
+    ["calls: list all", "/call-logs?page=1"],
+    ["calls: search by candidate_slug", "/call-logs/search?candidate_slug=" + JAMIE],
+    ["calls: get candidate calls", "/candidates/" + JAMIE + "/call-logs"],
+    // Hotlists
+    ["hotlists: list all", "/hotlists?page=1"],
+    ["hotlists: search", "/hotlists/search?page=1"],
+    // Meetings
+    ["meetings: list all", "/meetings?page=1"],
+    ["meetings: search by candidate", "/meetings/search?candidate_slug=" + JAMIE],
+    // Tasks
+    ["tasks: list all", "/tasks?page=1"],
+    // Sequences
+    ["sequences: search", "/sequences/search?page=1"],
   ];
 
   for (const [label, path] of tests) {
     try {
       const r = await fetch(`${BASE_URL}${path}`, {
-        headers: {
-          "Authorization": `Bearer ${API_TOKEN}`,
-          "Accept": "application/json",
-        }
+        headers: { "Authorization": `Bearer ${API_TOKEN}`, "Accept": "application/json" }
       });
       const text = await r.text();
       try {
         const json = JSON.parse(text);
         const count = json.data ? json.data.length : (Array.isArray(json) ? json.length : "?");
-        results[label] = { status: r.status, count, sample: json.data?.[0]?.first_name || json.data?.[0]?.name || "" };
+        results[label] = { status: r.status, count };
       } catch {
-        results[label] = { status: r.status, raw: text.slice(0, 100) };
+        results[label] = { status: r.status, raw: text.slice(0, 80) };
       }
     } catch (e) {
       results[label] = { error: String(e) };
@@ -853,3 +856,5 @@ app.get("/test", async (req, res) => {
   }
   res.json(results);
 });
+
+
