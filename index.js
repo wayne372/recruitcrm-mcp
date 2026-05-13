@@ -809,32 +809,28 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`RecruitCRM MCP v2.0 running on port ${PORT}`));
 
 // ================================================================
-// DIAGNOSTIC ENDPOINT - visit /test in browser to check API
+// DIAGNOSTIC ENDPOINT
 // ================================================================
 app.get("/test", async (req, res) => {
   const results = {};
   const JAMIE = "17636480569940073000Aej";
 
   const tests = [
-    // Notes
-    ["notes: list all", "/notes?page=1"],
-    ["notes: search by candidate_slug", "/notes/search?candidate_slug=" + JAMIE],
-    ["notes: search by slug param", "/notes/search?slug=" + JAMIE],
-    ["notes: get candidate notes", "/candidates/" + JAMIE + "/notes"],
-    // Call logs
-    ["calls: list all", "/call-logs?page=1"],
-    ["calls: search by candidate_slug", "/call-logs/search?candidate_slug=" + JAMIE],
-    ["calls: get candidate calls", "/candidates/" + JAMIE + "/call-logs"],
-    // Hotlists
-    ["hotlists: list all", "/hotlists?page=1"],
-    ["hotlists: search", "/hotlists/search?page=1"],
-    // Meetings
-    ["meetings: list all", "/meetings?page=1"],
-    ["meetings: search by candidate", "/meetings/search?candidate_slug=" + JAMIE],
-    // Tasks
-    ["tasks: list all", "/tasks?page=1"],
-    // Sequences
-    ["sequences: search", "/sequences/search?page=1"],
+    // Find correct call log filter param
+    ["calls: slug=JAMIE", "/call-logs/search?slug=" + JAMIE],
+    ["calls: related_slug=JAMIE", "/call-logs/search?related_slug=" + JAMIE],
+    ["calls: entity_slug=JAMIE", "/call-logs/search?entity_slug=" + JAMIE],
+    ["calls: candidate=JAMIE", "/call-logs/search?candidate=" + JAMIE],
+    // Find correct notes filter param
+    ["notes: slug=JAMIE", "/notes/search?slug=" + JAMIE],
+    ["notes: related_slug=JAMIE", "/notes/search?related_slug=" + JAMIE],
+    ["notes: entity_slug=JAMIE", "/notes/search?entity_slug=" + JAMIE],
+    ["notes: candidate=JAMIE", "/notes/search?candidate=" + JAMIE],
+    // Sequences correct path
+    ["sequences: list", "/sequences?page=1"],
+    ["sequences: enrollments", "/sequence-enrollments?page=1"],
+    // Hotlist contents
+    ["hotlists: list", "/hotlists?page=1"],
   ];
 
   for (const [label, path] of tests) {
