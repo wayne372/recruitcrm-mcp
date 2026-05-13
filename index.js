@@ -464,25 +464,20 @@ function createServer() {
   // ================================================================
 
   server.tool("list_call_logs",
-    "List all call logs with pagination",
-    { page: z.number().optional().describe("Page number, default 1") },
-    async ({ page = 1 }) => {
-      const data = await rcrmFetch(`/call-logs?page=${page}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool("search_call_logs",
-    "Search call logs, optionally filtered by candidate or contact",
+    "List all call logs. Optionally filter by candidate_slug to see calls for a specific candidate.",
     {
-      candidate_slug: z.string().optional().describe("Filter by candidate slug"),
-      contact_slug: z.string().optional().describe("Filter by contact slug"),
+      candidate_slug: z.string().optional().describe("Filter by candidate slug to see their calls only"),
       page: z.number().optional().describe("Page number, default 1"),
     },
-    async ({ page = 1, ...filters }) => {
-      const params = new URLSearchParams({ page: String(page) });
-      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
-      const data = await rcrmFetch(`/call-logs/search?${params}`);
+    async ({ page = 1, candidate_slug }) => {
+      const data = await rcrmFetch(`/call-logs?page=${page}`);
+      if (candidate_slug && data.data) {
+        data.data = data.data.filter(c =>
+          c.candidate_slug === candidate_slug ||
+          c.slug === candidate_slug ||
+          JSON.stringify(c).includes(candidate_slug)
+        );
+      }
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -507,26 +502,19 @@ function createServer() {
   // ================================================================
 
   server.tool("list_notes",
-    "List all notes with pagination",
-    { page: z.number().optional().describe("Page number, default 1") },
-    async ({ page = 1 }) => {
-      const data = await rcrmFetch(`/notes?page=${page}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool("search_notes",
-    "Search notes by associated candidate, contact or job",
+    "List all notes. Optionally filter by candidate_slug, contact_slug or job_slug.",
     {
-      candidate_slug: z.string().optional().describe("Filter by candidate slug"),
-      contact_slug: z.string().optional().describe("Filter by contact slug"),
-      job_slug: z.string().optional().describe("Filter by job slug"),
+      candidate_slug: z.string().optional().describe("Filter notes for a specific candidate"),
+      contact_slug: z.string().optional().describe("Filter notes for a specific contact"),
+      job_slug: z.string().optional().describe("Filter notes for a specific job"),
       page: z.number().optional().describe("Page number, default 1"),
     },
-    async ({ page = 1, ...filters }) => {
-      const params = new URLSearchParams({ page: String(page) });
-      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
-      const data = await rcrmFetch(`/notes/search?${params}`);
+    async ({ page = 1, candidate_slug, contact_slug, job_slug }) => {
+      const data = await rcrmFetch(`/notes?page=${page}`);
+      const filterSlug = candidate_slug || contact_slug || job_slug;
+      if (filterSlug && data.data) {
+        data.data = data.data.filter(n => JSON.stringify(n).includes(filterSlug));
+      }
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -813,43 +801,36 @@ app.listen(PORT, () => console.log(`RecruitCRM MCP v2.0 running on port ${PORT}`
 // ================================================================
 app.get("/test", async (req, res) => {
   const results = {};
-  const JAMIE = "17636480569940073000Aej";
 
-  const tests = [
-    // Find correct call log filter param
-    ["calls: slug=JAMIE", "/call-logs/search?slug=" + JAMIE],
-    ["calls: related_slug=JAMIE", "/call-logs/search?related_slug=" + JAMIE],
-    ["calls: entity_slug=JAMIE", "/call-logs/search?entity_slug=" + JAMIE],
-    ["calls: candidate=JAMIE", "/call-logs/search?candidate=" + JAMIE],
-    // Find correct notes filter param
-    ["notes: slug=JAMIE", "/notes/search?slug=" + JAMIE],
-    ["notes: related_slug=JAMIE", "/notes/search?related_slug=" + JAMIE],
-    ["notes: entity_slug=JAMIE", "/notes/search?entity_slug=" + JAMIE],
-    ["notes: candidate=JAMIE", "/notes/search?candidate=" + JAMIE],
-    // Sequences correct path
-    ["sequences: list", "/sequences?page=1"],
-    ["sequences: enrollments", "/sequence-enrollments?page=1"],
-    // Hotlist contents
-    ["hotlists: list", "/hotlists?page=1"],
-  ];
+  // Get first call log to see its data structure
+  try {
+    const r = await fetch(`${BASE_URL}/call-logs?page=1`, {
+      headers: { "Authorization": `Bearer ${API_TOKEN}`, "Accept": "application/json" }
+    });
+    const json = await r.json();
+    results["call_log_sample"] = json.data?.[0] || "no data";
+  } catch(e) { results["call_log_sample"] = String(e); }
 
-  for (const [label, path] of tests) {
+  // Get first note to see its data structure
+  try {
+    const r = await fetch(`${BASE_URL}/notes?page=1`, {
+      headers: { "Authorization": `Bearer ${API_TOKEN}`, "Accept": "application/json" }
+    });
+    const json = await r.json();
+    results["note_sample"] = json.data?.[0] || "no data";
+  } catch(e) { results["note_sample"] = String(e); }
+
+  // Try sequence paths
+  const seqPaths = ["/sequences", "/sequence", "/enrollments", "/candidate-sequences"];
+  for (const p of seqPaths) {
     try {
-      const r = await fetch(`${BASE_URL}${path}`, {
+      const r = await fetch(`${BASE_URL}${p}?page=1`, {
         headers: { "Authorization": `Bearer ${API_TOKEN}`, "Accept": "application/json" }
       });
-      const text = await r.text();
-      try {
-        const json = JSON.parse(text);
-        const count = json.data ? json.data.length : (Array.isArray(json) ? json.length : "?");
-        results[label] = { status: r.status, count };
-      } catch {
-        results[label] = { status: r.status, raw: text.slice(0, 80) };
-      }
-    } catch (e) {
-      results[label] = { error: String(e) };
-    }
+      results["seq: " + p] = { status: r.status };
+    } catch(e) { results["seq: " + p] = String(e); }
   }
+
   res.json(results);
 });
 
