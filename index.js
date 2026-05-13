@@ -580,15 +580,19 @@ Never say a tool is unavailable without trying it first. Never use update_candid
       job_slug: z.string().optional().describe("Job slug to attach the note to"),
     },
     async ({ note, candidate_slug, contact_slug, job_slug }) => {
-      const body = { note };
-      if (candidate_slug) body.candidate_slug = candidate_slug;
-      if (contact_slug) body.contact_slug = contact_slug;
-      if (job_slug) body.job_slug = job_slug;
-      const associations = [];
-      if (candidate_slug) associations.push({ slug: candidate_slug, type: "candidate" });
-      if (contact_slug) associations.push({ slug: contact_slug, type: "contact" });
-      if (job_slug) associations.push({ slug: job_slug, type: "job" });
-      if (associations.length > 0) body.associations = associations;
+      let related_to_type = null;
+      let related_to = null;
+      if (candidate_slug) { related_to_type = "candidate"; related_to = candidate_slug; }
+      else if (contact_slug) { related_to_type = "contact"; related_to = contact_slug; }
+      else if (job_slug) { related_to_type = "job"; related_to = job_slug; }
+      const body = {
+        description: note,
+        related_to_type,
+        related_to,
+        candidate_slug,
+        contact_slug,
+        job_slug,
+      };
       const data = await rcrmFetch("/notes", { method: "POST", body: JSON.stringify(body) });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
