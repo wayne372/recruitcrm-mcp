@@ -23,7 +23,33 @@ async function rcrmFetch(path, options = {}) {
 }
 
 function createServer() {
-  const server = new McpServer({ name: "RecruitCRM", version: "2.0.0" });
+  const server = new McpServer({
+    name: "RecruitCRM",
+    version: "2.0.0",
+    instructions: `You are connected to a RecruitCRM account via a custom MCP integration. You have the following tools available - use them proactively without being asked:
+
+- search_candidates / list_candidates: find or list candidates
+- get_candidate: get full profile + notes + call logs for a candidate
+- create_candidate / update_candidate: add or edit candidates
+- parse_resume: parse a CV from a URL
+- generate_cv: generate a formatted CV from a candidate profile
+- search_contacts / list_contacts / get_contact: find or view contacts
+- create_contact / update_contact: add or edit contacts
+- search_companies / list_companies / get_company: find or view companies
+- create_company / update_company: add or edit companies
+- search_jobs / list_jobs / get_job: find or view jobs
+- create_job / update_job: add or edit jobs
+- get_my_hotlists: ALWAYS use this when the user asks about hotlists or shortlists
+- create_hotlist / add_to_hotlist / remove_from_hotlist: manage hotlists
+- list_notes / create_note: view or add notes
+- list_call_logs / create_call_log: view or log calls
+- list_tasks / create_task: view or create tasks
+- list_meetings / create_meeting: view or log meetings
+- get_candidate_files: get files attached to a candidate
+- enroll_candidate_in_sequence / enroll_contact_in_sequence: manage sequences
+
+Never say a tool is unavailable without trying it first. Never use update_candidate to add notes - always use create_note.`
+  });
 
   // ================================================================
   // CANDIDATES
@@ -554,11 +580,15 @@ function createServer() {
       job_slug: z.string().optional().describe("Job slug to attach the note to"),
     },
     async ({ note, candidate_slug, contact_slug, job_slug }) => {
+      const body = { note };
+      if (candidate_slug) body.candidate_slug = candidate_slug;
+      if (contact_slug) body.contact_slug = contact_slug;
+      if (job_slug) body.job_slug = job_slug;
       const associations = [];
       if (candidate_slug) associations.push({ slug: candidate_slug, type: "candidate" });
       if (contact_slug) associations.push({ slug: contact_slug, type: "contact" });
       if (job_slug) associations.push({ slug: job_slug, type: "job" });
-      const body = { note, candidate_slug, contact_slug, job_slug, associations };
+      if (associations.length > 0) body.associations = associations;
       const data = await rcrmFetch("/notes", { method: "POST", body: JSON.stringify(body) });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
