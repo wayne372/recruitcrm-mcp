@@ -782,3 +782,30 @@ app.get("/health", (_, res) => res.json({
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`RecruitCRM MCP v2.0 running on port ${PORT}`));
+
+// Test endpoint - visit /test-search in browser to debug API directly
+app.get("/test-search", async (req, res) => {
+  const results = {};
+  const testParams = [
+    "name=Jamie",
+    "first_name=Jamie",
+    "keyword=Jamie",
+    "q=Jamie",
+    "search=Jamie",
+  ];
+  for (const p of testParams) {
+    try {
+      const r = await fetch(`${BASE_URL}/candidates/search?${p}&page=1`, {
+        headers: {
+          "Authorization": `Bearer ${API_TOKEN}`,
+          "Accept": "application/json",
+        }
+      });
+      const json = await r.json();
+      results[p] = { status: r.status, count: Array.isArray(json.data) ? json.data.length : json };
+    } catch (e) {
+      results[p] = { error: String(e) };
+    }
+  }
+  res.json(results);
+});
