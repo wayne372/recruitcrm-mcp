@@ -210,6 +210,15 @@ function createServer() {
     }
   );
 
+  server.tool("get_candidate_files",
+    "Get all files attached to a candidate including CVs and formatted CVs",
+    { slug: z.string().describe("Candidate slug ID") },
+    async ({ slug }) => {
+      const data = await rcrmFetch(`/candidates/${slug}/files`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
   // ================================================================
   // CONTACTS
   // ================================================================
@@ -464,20 +473,19 @@ function createServer() {
   // ================================================================
 
   server.tool("list_call_logs",
-    "List all call logs. Optionally filter by candidate_slug to see calls for a specific candidate.",
+    "List call logs. Pass candidate_slug, contact_slug or job_slug to filter by a specific record.",
     {
-      candidate_slug: z.string().optional().describe("Filter by candidate slug to see their calls only"),
+      candidate_slug: z.string().optional().describe("Filter calls for a specific candidate"),
+      contact_slug: z.string().optional().describe("Filter calls for a specific contact"),
+      job_slug: z.string().optional().describe("Filter calls for a specific job"),
       page: z.number().optional().describe("Page number, default 1"),
     },
-    async ({ page = 1, candidate_slug }) => {
-      const data = await rcrmFetch(`/call-logs?page=${page}`);
-      if (candidate_slug && data.data) {
-        data.data = data.data.filter(c =>
-          c.candidate_slug === candidate_slug ||
-          c.slug === candidate_slug ||
-          JSON.stringify(c).includes(candidate_slug)
-        );
-      }
+    async ({ page = 1, candidate_slug, contact_slug, job_slug }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      if (candidate_slug) params.set("slug", candidate_slug);
+      else if (contact_slug) params.set("slug", contact_slug);
+      else if (job_slug) params.set("slug", job_slug);
+      const data = await rcrmFetch(`/call-logs?${params}`);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -502,7 +510,7 @@ function createServer() {
   // ================================================================
 
   server.tool("list_notes",
-    "List all notes. Optionally filter by candidate_slug, contact_slug or job_slug.",
+    "List notes. Pass candidate_slug, contact_slug or job_slug to filter by a specific record.",
     {
       candidate_slug: z.string().optional().describe("Filter notes for a specific candidate"),
       contact_slug: z.string().optional().describe("Filter notes for a specific contact"),
@@ -510,24 +518,29 @@ function createServer() {
       page: z.number().optional().describe("Page number, default 1"),
     },
     async ({ page = 1, candidate_slug, contact_slug, job_slug }) => {
-      const data = await rcrmFetch(`/notes?page=${page}`);
-      const filterSlug = candidate_slug || contact_slug || job_slug;
-      if (filterSlug && data.data) {
-        data.data = data.data.filter(n => JSON.stringify(n).includes(filterSlug));
-      }
+      const params = new URLSearchParams({ page: String(page) });
+      if (candidate_slug) params.set("slug", candidate_slug);
+      else if (contact_slug) params.set("slug", contact_slug);
+      else if (job_slug) params.set("slug", job_slug);
+      const data = await rcrmFetch(`/notes?${params}`);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
 
   server.tool("create_note",
-    "Add a note to a candidate, contact or job record",
+    "Add a note to a candidate, contact or job record in RecruitCRM",
     {
       note: z.string().describe("Note content"),
-      candidate_slug: z.string().optional().describe("Associate with a candidate"),
-      contact_slug: z.string().optional().describe("Associate with a contact"),
-      job_slug: z.string().optional().describe("Associate with a job"),
+      candidate_slug: z.string().optional().describe("Candidate slug to attach the note to"),
+      contact_slug: z.string().optional().describe("Contact slug to attach the note to"),
+      job_slug: z.string().optional().describe("Job slug to attach the note to"),
     },
-    async (body) => {
+    async ({ note, candidate_slug, contact_slug, job_slug }) => {
+      const associations = [];
+      if (candidate_slug) associations.push({ slug: candidate_slug, type: "candidate" });
+      if (contact_slug) associations.push({ slug: contact_slug, type: "contact" });
+      if (job_slug) associations.push({ slug: job_slug, type: "job" });
+      const body = { note, candidate_slug, contact_slug, job_slug, associations };
       const data = await rcrmFetch("/notes", { method: "POST", body: JSON.stringify(body) });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
