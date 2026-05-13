@@ -69,11 +69,20 @@ function createServer() {
   );
 
   server.tool("get_candidate",
-    "Get full profile for a specific candidate by their slug ID",
+    "Get full profile, notes, and call logs for a specific candidate by their slug ID",
     { slug: z.string().describe("Candidate slug ID") },
     async ({ slug }) => {
-      const data = await rcrmFetch(`/candidates/${slug}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      const [profile, notes, calls] = await Promise.all([
+        rcrmFetch(`/candidates/${slug}`),
+        rcrmFetch(`/notes?slug=${slug}`).catch(() => ({ data: [] })),
+        rcrmFetch(`/call-logs?slug=${slug}`).catch(() => ({ data: [] })),
+      ]);
+      const result = {
+        ...profile,
+        notes: notes.data || [],
+        call_logs: calls.data || [],
+      };
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -261,11 +270,20 @@ function createServer() {
   );
 
   server.tool("get_contact",
-    "Get full details for a specific contact by their slug ID",
+    "Get full details, notes, and call logs for a specific contact by their slug ID",
     { slug: z.string().describe("Contact slug ID") },
     async ({ slug }) => {
-      const data = await rcrmFetch(`/contacts/${slug}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      const [profile, notes, calls] = await Promise.all([
+        rcrmFetch(`/contacts/${slug}`),
+        rcrmFetch(`/notes?slug=${slug}`).catch(() => ({ data: [] })),
+        rcrmFetch(`/call-logs?slug=${slug}`).catch(() => ({ data: [] })),
+      ]);
+      const result = {
+        ...profile,
+        notes: notes.data || [],
+        call_logs: calls.data || [],
+      };
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -637,8 +655,8 @@ function createServer() {
   // HOTLISTS
   // ================================================================
 
-  server.tool("list_hotlists",
-    "IMPORTANT: Always use this tool whenever the user mentions hotlists. Do not say hotlists are unavailable.",
+  server.tool("get_my_hotlists",
+    "Returns all hotlists. Call this tool for any request about hotlists, shortlists or saved candidate lists.",
     { page: z.number().optional().describe("Page number, default 1") },
     async ({ page = 1 }) => {
       const data = await rcrmFetch(`/hotlists?page=${page}`);
