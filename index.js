@@ -23,75 +23,45 @@ async function rcrmFetch(path, options = {}) {
 }
 
 function createServer() {
-  const server = new McpServer({ name: "RecruitCRM", version: "1.0.0" });
+  const server = new McpServer({ name: "RecruitCRM", version: "2.0.0" });
+
+  // ================================================================
+  // CANDIDATES
+  // ================================================================
 
   server.tool("search_candidates",
-    "Search for candidates by name, skills, location or any keyword",
+    "Search candidates by name, email, city, skill or current employer. At least one filter required.",
     {
-      query: z.string().optional().describe("Search keyword e.g. 'JavaScript London'"),
+      name: z.string().optional().describe("Candidate full or partial name"),
+      email: z.string().optional().describe("Email address"),
+      city: z.string().optional().describe("City or location"),
+      skill: z.string().optional().describe("Skill keyword"),
+      current_employer: z.string().optional().describe("Current employer/company name"),
+      current_title: z.string().optional().describe("Current job title"),
       page: z.number().optional().describe("Page number, default 1"),
     },
-    async ({ query = "", page = 1 }) => {
+    async ({ page = 1, ...filters }) => {
       const params = new URLSearchParams({ page: String(page) });
-      if (query) params.set("q", query);
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
       const data = await rcrmFetch(`/candidates/search?${params}`);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
 
+  server.tool("list_candidates",
+    "List all candidates with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/candidates?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
   server.tool("get_candidate",
-    "Get full profile details for a specific candidate",
-    { slug: z.string().describe("The candidate slug ID from RecruitCRM") },
+    "Get full profile for a specific candidate by their slug ID",
+    { slug: z.string().describe("Candidate slug ID") },
     async ({ slug }) => {
       const data = await rcrmFetch(`/candidates/${slug}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool("search_contacts",
-    "Search for contacts such as clients and hiring managers",
-    {
-      query: z.string().optional().describe("Search keyword"),
-      page: z.number().optional().describe("Page number, default 1"),
-    },
-    async ({ query = "", page = 1 }) => {
-      const params = new URLSearchParams({ page: String(page) });
-      if (query) params.set("q", query);
-      const data = await rcrmFetch(`/contacts/search?${params}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool("get_contact",
-    "Get full details for a specific contact",
-    { slug: z.string().describe("The contact slug ID from RecruitCRM") },
-    async ({ slug }) => {
-      const data = await rcrmFetch(`/contacts/${slug}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool("search_jobs",
-    "Search for jobs in RecruitCRM",
-    {
-      query: z.string().optional().describe("Search keyword"),
-      status: z.number().optional().describe("1=Open, 2=Closed, 3=On Hold"),
-      page: z.number().optional().describe("Page number, default 1"),
-    },
-    async ({ query = "", status, page = 1 }) => {
-      const params = new URLSearchParams({ page: String(page) });
-      if (query) params.set("q", query);
-      if (status !== undefined) params.set("job_status", String(status));
-      const data = await rcrmFetch(`/jobs/search?${params}`);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool("get_job",
-    "Get full details for a specific job",
-    { slug: z.string().describe("The job slug ID from RecruitCRM") },
-    async ({ slug }) => {
-      const data = await rcrmFetch(`/jobs/${slug}`);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -102,15 +72,15 @@ function createServer() {
       first_name: z.string().describe("First name"),
       last_name: z.string().describe("Last name"),
       email: z.string().optional().describe("Email address"),
-      phone: z.string().optional().describe("Phone number"),
+      contact_number: z.string().optional().describe("Phone number"),
       current_title: z.string().optional().describe("Current job title"),
-      current_company: z.string().optional().describe("Current employer"),
+      current_employer: z.string().optional().describe("Current employer name"),
+      city: z.string().optional().describe("City"),
+      country: z.string().optional().describe("Country"),
+      summary: z.string().optional().describe("Profile summary"),
     },
     async (body) => {
-      const data = await rcrmFetch("/candidates", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      const data = await rcrmFetch("/candidates", { method: "POST", body: JSON.stringify(body) });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -122,61 +92,668 @@ function createServer() {
       first_name: z.string().optional(),
       last_name: z.string().optional(),
       email: z.string().optional(),
-      phone: z.string().optional(),
+      contact_number: z.string().optional(),
       current_title: z.string().optional(),
-      current_company: z.string().optional(),
-      summary: z.string().optional().describe("Profile summary or notes"),
+      current_employer: z.string().optional(),
+      city: z.string().optional(),
+      country: z.string().optional(),
+      summary: z.string().optional(),
     },
     async ({ slug, ...updates }) => {
-      const data = await rcrmFetch(`/candidates/${slug}`, {
-        method: "PUT",
-        body: JSON.stringify(updates),
+      const data = await rcrmFetch(`/candidates/${slug}`, { method: "POST", body: JSON.stringify(updates) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("parse_resume",
+    "Parse a CV/resume from a public URL to automatically extract candidate data. Returns structured profile information.",
+    {
+      resume_url: z.string().describe("Publicly accessible URL of the CV or resume file (PDF or Word)"),
+    },
+    async ({ resume_url }) => {
+      const data = await rcrmFetch("/candidates/resume-parser", {
+        method: "POST",
+        body: JSON.stringify({ resume_url }),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("get_candidate_hiring_stages",
+    "Get all jobs and pipeline stages a candidate is currently in",
+    { slug: z.string().describe("Candidate slug ID") },
+    async ({ slug }) => {
+      const data = await rcrmFetch(`/candidates/${slug}/hiring-stages`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("update_candidate_hiring_stage",
+    "Move a candidate to a different pipeline stage on a specific job",
+    {
+      candidate_slug: z.string().describe("Candidate slug ID"),
+      job_slug: z.string().describe("Job slug ID"),
+      stage_id: z.number().describe("The pipeline stage ID to move the candidate to"),
+    },
+    async ({ candidate_slug, job_slug, stage_id }) => {
+      const data = await rcrmFetch(`/candidates/${candidate_slug}/update-hiring-stage`, {
+        method: "POST",
+        body: JSON.stringify({ job_slug, stage_id }),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("assign_candidate_to_job",
+    "Assign a candidate to a job opening in RecruitCRM",
+    {
+      candidate_slug: z.string().describe("Candidate slug ID"),
+      job_slug: z.string().describe("Job slug ID"),
+    },
+    async ({ candidate_slug, job_slug }) => {
+      const data = await rcrmFetch(`/candidates/${candidate_slug}/apply`, {
+        method: "POST",
+        body: JSON.stringify({ job_slug }),
       });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
 
   server.tool("generate_cv",
-    "Generate a nicely formatted CV for a candidate from their RecruitCRM profile",
+    "Generate a clean formatted CV from a candidate's RecruitCRM profile",
     { slug: z.string().describe("Candidate slug ID") },
     async ({ slug }) => {
       const c = await rcrmFetch(`/candidates/${slug}`);
-      const cv = `
-CURRICULUM VITAE
-================
-${c.first_name} ${c.last_name}
-${c.email || ""} | ${c.phone || ""}
+      const lines = [
+        "CURRICULUM VITAE",
+        "================",
+        `${c.first_name || ""} ${c.last_name || ""}`.trim(),
+        [c.email, c.contact_number].filter(Boolean).join(" | "),
+        [c.city, c.country].filter(Boolean).join(", "),
+        "",
+        "CURRENT ROLE",
+        "------------",
+        `${c.current_title || "N/A"} at ${c.current_employer || "N/A"}`,
+        "",
+        "SUMMARY",
+        "-------",
+        c.summary || "No summary provided",
+        "",
+        "SKILLS",
+        "------",
+        (c.skill_list || []).join(", ") || "None listed",
+        "",
+        "EXPERIENCE",
+        "----------",
+        ...((c.experiences || []).map(e =>
+          `${e.title || ""} at ${e.company_name || ""} (${e.start_date || ""} - ${e.end_date || "Present"})\n${e.description || ""}`
+        )),
+        "",
+        "EDUCATION",
+        "---------",
+        ...((c.educations || []).map(e =>
+          `${e.degree || ""} - ${e.school_name || ""} (${e.completion_year || ""})`
+        )),
+      ];
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
+  );
 
-CURRENT ROLE
-------------
-${c.current_title || "N/A"} at ${c.current_company || "N/A"}
+  // ================================================================
+  // CONTACTS
+  // ================================================================
 
-SUMMARY
--------
-${c.summary || "No summary provided"}
+  server.tool("search_contacts",
+    "Search contacts by name, email, company or location. At least one filter required.",
+    {
+      name: z.string().optional().describe("Contact name"),
+      email: z.string().optional().describe("Email address"),
+      company_name: z.string().optional().describe("Company name"),
+      city: z.string().optional().describe("City or location"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/contacts/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 
-SKILLS
-------
-${(c.skill_list || []).join(", ") || "None listed"}
+  server.tool("list_contacts",
+    "List all contacts with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/contacts?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 
-EXPERIENCE
-----------
-${(c.experiences || []).map(e =>
-  `${e.title || ""} at ${e.company_name || ""} (${e.start_date || ""} - ${e.end_date || "Present"})\n${e.description || ""}`
-).join("\n\n") || "None listed"}
+  server.tool("get_contact",
+    "Get full details for a specific contact by their slug ID",
+    { slug: z.string().describe("Contact slug ID") },
+    async ({ slug }) => {
+      const data = await rcrmFetch(`/contacts/${slug}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 
-EDUCATION
----------
-${(c.educations || []).map(e =>
-  `${e.degree || ""} - ${e.school_name || ""} (${e.completion_year || ""})`
-).join("\n") || "None listed"}
-      `.trim();
-      return { content: [{ type: "text", text: cv }] };
+  server.tool("create_contact",
+    "Create a new contact (client or hiring manager) in RecruitCRM",
+    {
+      first_name: z.string().describe("First name"),
+      last_name: z.string().describe("Last name"),
+      email: z.string().optional().describe("Email address"),
+      contact_number: z.string().optional().describe("Phone number"),
+      title: z.string().optional().describe("Job title"),
+      company_slug: z.string().optional().describe("Slug of the associated company"),
+      city: z.string().optional().describe("City"),
+      country: z.string().optional().describe("Country"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/contacts", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("update_contact",
+    "Update an existing contact's details",
+    {
+      slug: z.string().describe("Contact slug ID"),
+      first_name: z.string().optional(),
+      last_name: z.string().optional(),
+      email: z.string().optional(),
+      contact_number: z.string().optional(),
+      title: z.string().optional(),
+      city: z.string().optional(),
+      country: z.string().optional(),
+    },
+    async ({ slug, ...updates }) => {
+      const data = await rcrmFetch(`/contacts/${slug}`, { method: "POST", body: JSON.stringify(updates) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // COMPANIES
+  // ================================================================
+
+  server.tool("search_companies",
+    "Search companies by name or location. At least one filter required.",
+    {
+      name: z.string().optional().describe("Company name"),
+      city: z.string().optional().describe("City or location"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/companies/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("list_companies",
+    "List all companies with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/companies?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("get_company",
+    "Get full details for a specific company by its slug ID",
+    { slug: z.string().describe("Company slug ID") },
+    async ({ slug }) => {
+      const data = await rcrmFetch(`/companies/${slug}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("create_company",
+    "Create a new company in RecruitCRM",
+    {
+      name: z.string().describe("Company name"),
+      city: z.string().optional().describe("City"),
+      country: z.string().optional().describe("Country"),
+      website: z.string().optional().describe("Website URL"),
+      industry: z.string().optional().describe("Industry"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/companies", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("update_company",
+    "Update an existing company's details",
+    {
+      slug: z.string().describe("Company slug ID"),
+      name: z.string().optional(),
+      city: z.string().optional(),
+      country: z.string().optional(),
+      website: z.string().optional(),
+      industry: z.string().optional(),
+    },
+    async ({ slug, ...updates }) => {
+      const data = await rcrmFetch(`/companies/${slug}`, { method: "POST", body: JSON.stringify(updates) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // JOBS
+  // ================================================================
+
+  server.tool("search_jobs",
+    "Search jobs by title, location or status. At least one filter required.",
+    {
+      name: z.string().optional().describe("Job title"),
+      city: z.string().optional().describe("City or location"),
+      job_status: z.number().optional().describe("Status: 1=Open, 2=Closed, 3=On Hold"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v !== undefined) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/jobs/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("list_jobs",
+    "List all jobs with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/jobs?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("get_job",
+    "Get full details for a specific job by its slug ID",
+    { slug: z.string().describe("Job slug ID") },
+    async ({ slug }) => {
+      const data = await rcrmFetch(`/jobs/${slug}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("create_job",
+    "Create a new job opening in RecruitCRM",
+    {
+      name: z.string().describe("Job title"),
+      company_slug: z.string().optional().describe("Slug of the associated company"),
+      city: z.string().optional().describe("Job location city"),
+      country: z.string().optional().describe("Job location country"),
+      description: z.string().optional().describe("Job description"),
+      min_salary: z.number().optional().describe("Minimum salary"),
+      max_salary: z.number().optional().describe("Maximum salary"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/jobs", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("update_job",
+    "Update an existing job's details or status",
+    {
+      slug: z.string().describe("Job slug ID"),
+      name: z.string().optional(),
+      city: z.string().optional(),
+      country: z.string().optional(),
+      description: z.string().optional(),
+      job_status: z.number().optional().describe("1=Open, 2=Closed, 3=On Hold"),
+    },
+    async ({ slug, ...updates }) => {
+      const data = await rcrmFetch(`/jobs/${slug}`, { method: "POST", body: JSON.stringify(updates) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("get_job_candidates",
+    "Get all candidates assigned to a job and their current pipeline stages",
+    { slug: z.string().describe("Job slug ID") },
+    async ({ slug }) => {
+      const data = await rcrmFetch(`/jobs/${slug}/candidates`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("get_job_hiring_stages",
+    "Get the available pipeline stages for a specific job",
+    { slug: z.string().describe("Job slug ID") },
+    async ({ slug }) => {
+      const data = await rcrmFetch(`/jobs/${slug}/hiring-stages`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // CALL LOGS
+  // ================================================================
+
+  server.tool("list_call_logs",
+    "List all call logs with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/call-logs?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("search_call_logs",
+    "Search call logs, optionally filtered by candidate or contact",
+    {
+      candidate_slug: z.string().optional().describe("Filter by candidate slug"),
+      contact_slug: z.string().optional().describe("Filter by contact slug"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/call-logs/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("create_call_log",
+    "Log a call against a candidate or contact record",
+    {
+      candidate_slug: z.string().optional().describe("Candidate slug (if the call was with a candidate)"),
+      contact_slug: z.string().optional().describe("Contact slug (if the call was with a contact)"),
+      note: z.string().describe("Summary or notes from the call"),
+      duration: z.number().optional().describe("Call duration in seconds"),
+      call_type: z.string().optional().describe("Call type e.g. outbound, inbound"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/call-logs", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // NOTES
+  // ================================================================
+
+  server.tool("list_notes",
+    "List all notes with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/notes?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("search_notes",
+    "Search notes by associated candidate, contact or job",
+    {
+      candidate_slug: z.string().optional().describe("Filter by candidate slug"),
+      contact_slug: z.string().optional().describe("Filter by contact slug"),
+      job_slug: z.string().optional().describe("Filter by job slug"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/notes/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("create_note",
+    "Add a note to a candidate, contact or job record",
+    {
+      note: z.string().describe("Note content"),
+      candidate_slug: z.string().optional().describe("Associate with a candidate"),
+      contact_slug: z.string().optional().describe("Associate with a contact"),
+      job_slug: z.string().optional().describe("Associate with a job"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/notes", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // TASKS
+  // ================================================================
+
+  server.tool("list_tasks",
+    "List all tasks with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/tasks?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("search_tasks",
+    "Search tasks by associated candidate, contact or job",
+    {
+      candidate_slug: z.string().optional().describe("Filter by candidate slug"),
+      contact_slug: z.string().optional().describe("Filter by contact slug"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/tasks/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("create_task",
+    "Create a new task in RecruitCRM",
+    {
+      name: z.string().describe("Task title"),
+      due_date: z.string().optional().describe("Due date in YYYY-MM-DD format"),
+      description: z.string().optional().describe("Task description or details"),
+      candidate_slug: z.string().optional().describe("Associate with a candidate"),
+      contact_slug: z.string().optional().describe("Associate with a contact"),
+      job_slug: z.string().optional().describe("Associate with a job"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/tasks", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // MEETINGS
+  // ================================================================
+
+  server.tool("list_meetings",
+    "List all meetings with pagination",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/meetings?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("search_meetings",
+    "Search meetings by associated candidate or contact",
+    {
+      candidate_slug: z.string().optional().describe("Filter by candidate slug"),
+      contact_slug: z.string().optional().describe("Filter by contact slug"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/meetings/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("create_meeting",
+    "Log or schedule a meeting in RecruitCRM",
+    {
+      title: z.string().describe("Meeting title"),
+      meeting_date: z.string().describe("Meeting date and time in YYYY-MM-DD HH:MM format"),
+      candidate_slug: z.string().optional().describe("Associate with a candidate"),
+      contact_slug: z.string().optional().describe("Associate with a contact"),
+      description: z.string().optional().describe("Meeting notes, agenda or summary"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/meetings", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // HOTLISTS
+  // ================================================================
+
+  server.tool("list_hotlists",
+    "List all hotlists in RecruitCRM",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/hotlists?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("search_hotlists",
+    "Search for hotlists by name",
+    {
+      name: z.string().optional().describe("Hotlist name keyword"),
+      page: z.number().optional().describe("Page number, default 1"),
+    },
+    async ({ page = 1, ...filters }) => {
+      const params = new URLSearchParams({ page: String(page) });
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+      const data = await rcrmFetch(`/hotlists/search?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("create_hotlist",
+    "Create a new hotlist in RecruitCRM",
+    {
+      name: z.string().describe("Hotlist name"),
+      description: z.string().optional().describe("Hotlist description"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/hotlists", { method: "POST", body: JSON.stringify(body) });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("add_to_hotlist",
+    "Add a candidate or contact to a hotlist",
+    {
+      hotlist_id: z.string().describe("Hotlist ID"),
+      candidate_slug: z.string().optional().describe("Candidate slug to add"),
+      contact_slug: z.string().optional().describe("Contact slug to add"),
+    },
+    async ({ hotlist_id, ...body }) => {
+      const data = await rcrmFetch(`/hotlists/${hotlist_id}/add`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("remove_from_hotlist",
+    "Remove a candidate or contact from a hotlist",
+    {
+      hotlist_id: z.string().describe("Hotlist ID"),
+      candidate_slug: z.string().optional().describe("Candidate slug to remove"),
+      contact_slug: z.string().optional().describe("Contact slug to remove"),
+    },
+    async ({ hotlist_id, ...body }) => {
+      const data = await rcrmFetch(`/hotlists/${hotlist_id}/remove`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // ================================================================
+  // SEQUENCES
+  // ================================================================
+
+  server.tool("search_sequences",
+    "Search available sequences and automations in RecruitCRM",
+    { page: z.number().optional().describe("Page number, default 1") },
+    async ({ page = 1 }) => {
+      const data = await rcrmFetch(`/sequences/search?page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("enroll_candidate_in_sequence",
+    "Enroll a candidate into an automated sequence",
+    {
+      candidate_slug: z.string().describe("Candidate slug ID"),
+      sequence_id: z.string().describe("Sequence ID to enroll into"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/sequences/enroll-candidate", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("unenroll_candidate_from_sequence",
+    "Remove a candidate from an automated sequence",
+    {
+      candidate_slug: z.string().describe("Candidate slug ID"),
+      sequence_id: z.string().describe("Sequence ID to unenroll from"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/sequences/unenroll-candidate", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("enroll_contact_in_sequence",
+    "Enroll a contact into an automated sequence",
+    {
+      contact_slug: z.string().describe("Contact slug ID"),
+      sequence_id: z.string().describe("Sequence ID to enroll into"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/sequences/enroll-contact", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool("unenroll_contact_from_sequence",
+    "Remove a contact from an automated sequence",
+    {
+      contact_slug: z.string().describe("Contact slug ID"),
+      sequence_id: z.string().describe("Sequence ID to unenroll from"),
+    },
+    async (body) => {
+      const data = await rcrmFetch("/sequences/unenroll-contact", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
 
   return server;
 }
+
+// ================================================================
+// SERVER SETUP
+// ================================================================
 
 const app = express();
 app.use(express.json());
@@ -194,7 +771,11 @@ app.post("/mcp", async (req, res) => {
   }
 });
 
-app.get("/health", (_, res) => res.json({ status: "ok", service: "RecruitCRM MCP" }));
+app.get("/health", (_, res) => res.json({
+  status: "ok",
+  service: "RecruitCRM MCP",
+  version: "2.0.0",
+}));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`RecruitCRM MCP server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`RecruitCRM MCP v2.0 running on port ${PORT}`));
