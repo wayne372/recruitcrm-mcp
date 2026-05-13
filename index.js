@@ -473,7 +473,7 @@ function createServer() {
   // ================================================================
 
   server.tool("list_call_logs",
-    "List call logs. Pass candidate_slug, contact_slug or job_slug to filter by a specific record.",
+    "IMPORTANT: Use this tool (not get_candidate) whenever asked about calls or call history for a person. Pass candidate_slug to filter by candidate.",
     {
       candidate_slug: z.string().optional().describe("Filter calls for a specific candidate"),
       contact_slug: z.string().optional().describe("Filter calls for a specific contact"),
@@ -491,7 +491,7 @@ function createServer() {
   );
 
   server.tool("create_call_log",
-    "Log a call against a candidate or contact record",
+    "IMPORTANT: Use this tool (not update_candidate) whenever asked to log or create a call record.",
     {
       candidate_slug: z.string().optional().describe("Candidate slug (if the call was with a candidate)"),
       contact_slug: z.string().optional().describe("Contact slug (if the call was with a contact)"),
@@ -510,7 +510,7 @@ function createServer() {
   // ================================================================
 
   server.tool("list_notes",
-    "List notes. Pass candidate_slug, contact_slug or job_slug to filter by a specific record.",
+    "IMPORTANT: Use this tool (not get_candidate) whenever asked about notes or activity on a record. Pass candidate_slug to get notes for a specific candidate.",
     {
       candidate_slug: z.string().optional().describe("Filter notes for a specific candidate"),
       contact_slug: z.string().optional().describe("Filter notes for a specific contact"),
@@ -528,7 +528,7 @@ function createServer() {
   );
 
   server.tool("create_note",
-    "Add a note to a candidate, contact or job record in RecruitCRM",
+    "IMPORTANT: Use this tool (not update_candidate) whenever asked to add or create a note. Never use update_candidate for notes.",
     {
       note: z.string().describe("Note content"),
       candidate_slug: z.string().optional().describe("Candidate slug to attach the note to"),
@@ -638,7 +638,7 @@ function createServer() {
   // ================================================================
 
   server.tool("list_hotlists",
-    "List all hotlists in RecruitCRM",
+    "IMPORTANT: Always use this tool whenever the user mentions hotlists. Do not say hotlists are unavailable.",
     { page: z.number().optional().describe("Page number, default 1") },
     async ({ page = 1 }) => {
       const data = await rcrmFetch(`/hotlists?page=${page}`);
